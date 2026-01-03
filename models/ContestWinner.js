@@ -1,7 +1,7 @@
-// models/Vote.js
+// models/ContestWinner.js
 const mongoose = require("mongoose");
 
-const voteSchema = new mongoose.Schema(
+const contestWinnerSchema = new mongoose.Schema(
   {
     contestId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -13,18 +13,27 @@ const voteSchema = new mongoose.Schema(
       ref: "ContestEntry",
       required: true,
     },
-    voterId: {
+    userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
+    },
+
+    rank: {
+      type: Number,
+      enum: [1, 2, 3],
+      required: true,
+    },
+    votesAtWinTime: {
+      type: Number,
+      required: true,
+    },
+    announcedAt: {
+      type: Date,
+      default: Date.now,
     },
   },
   { timestamps: true }
 );
 
-/**
- * One vote per user per contest
- */
-voteSchema.index({ voterId: 1, contestId: 1 }, { unique: true });
-
-module.exports = mongoose.model("Vote", voteSchema);
+module.exports = mongoose.model("ContestWinner", contestWinnerSchema);
