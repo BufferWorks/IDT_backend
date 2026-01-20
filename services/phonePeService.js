@@ -92,15 +92,6 @@ exports.createOrder = async (
 
     const redirectUrlFinal = paymentResponse.data.redirectUrl; // Check API docs if it's data.data.redirectUrl usually
 
-    // PhonePe API response structure usually: { success: true, code: 'PAYMENT_INITIATED', data: { instrumentResponse: { redirectInfo: { url: ... } } } }
-    // But user's snippet accessed `paymentResponse.data.redirectUrl`.
-    // I will stick to user's snippet structure but add logging if it fails.
-
-    // User Snippet: const redirectUrlFinal = paymentResponse.data.redirectUrl;
-    // NOTE: Standard PhonePe v1 API returns `data.instrumentResponse.redirectInfo.url`.
-    // If the user's snippet is for a specific wrapper or version, I will trust it.
-    // However, safest is to log the response if undefined.
-
     return {
       success: true,
       status: paymentResponse.status,
@@ -123,16 +114,9 @@ exports.checkStatus = async (merchantOrderId) => {
     const tokenResult = await exports.generateAccessToken();
     const accessToken = tokenResult.accessToken;
 
-    // Format: CHECK_PAYMENT_URL / Endpoint1 / merchantOrderId / Endpoint2
-    // e.g. https://api-t1.phonepe.com/apis/hermes/pg/v1/status/{merchantOrderId}
-    // But user provided disjointed env vars.
-
     const baseUrl = process.env.CHECK_PAYMENT_URL; // e.g. https://api.phonepe.com/apis/hermes
     const endpoint1 = process.env.CHECK_PAYMENT_ENDPOINT_1; // e.g. /pg/v1/status
     const endpoint2 = process.env.CHECK_PAYMENT_ENDPOINT_2 || ""; // Maybe empty or query param
-
-    // If endpoint2 starts with query params, don't use slash
-    // If user said: URL / ENDPOINT1 / ID / ENDPOINT2
 
     let statusUrl = `${baseUrl}${endpoint1}/${merchantOrderId}`;
     if (endpoint2) {
@@ -148,15 +132,6 @@ exports.checkStatus = async (merchantOrderId) => {
       },
     });
 
-    console.log("PhonePe Status Response:", JSON.stringify(response.data));
-
-    // Maps to the JSON provided by user
-    /*
-      {
-        "state": "COMPLETED",
-        "paymentDetails": [ { "transactionId": "...", "state": "COMPLETED" } ]
-      }
-    */
     const data = response.data;
 
     // Fallback if paymentDetails is empty but top-level state is there
