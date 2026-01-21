@@ -91,7 +91,7 @@ exports.createOrder = async (
     );
 
     const redirectUrlFinal = paymentResponse.data.redirectUrl; // Check API docs if it's data.data.redirectUrl usually
-
+    console.log("redirectUrlFinal", redirectUrlFinal);
     return {
       success: true,
       status: paymentResponse.status,
