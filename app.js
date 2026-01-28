@@ -12,7 +12,6 @@ const connectDB = require("./database/connection");
 const authRoute = require("./routes/auth");
 const contestRoutes = require("./routes/contest.js");
 
-// ✅ Use Render port first
 const PORT = process.env.PORT || 6000;
 
 // DB connection (non-blocking)
@@ -30,8 +29,8 @@ app.use(
   }),
 );
 
-app.use(express.json({ limit: "5mb" }));
-app.use(express.urlencoded({ limit: "5mb", extended: true }));
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 app.use(cookieParser());
 
 app.use(
@@ -52,7 +51,6 @@ app.get("/", (req, res) => {
   return res.json({ message: "pinging" });
 });
 
-// ✅ THIS is what Render scans for
-app.listen(PORT, "0.0.0.0", () => {
+app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
