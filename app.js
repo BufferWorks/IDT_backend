@@ -19,12 +19,26 @@ connectDB();
 
 app.use(
   cors({
-    origin: [
-      "https://idteventmanagement.online",
-      "https://www.idteventmanagement.online",
-      "http://localhost:3000",
-      "http://localhost:6001",
-    ],
+    origin: (origin, callback) => {
+      const allowedOrigins = [
+        "https://idteventmanagement.online",
+        "https://www.idteventmanagement.online",
+        "http://idteventmanagement.online",
+      ];
+
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+
+      // Allow allowed origins and any localhost
+      if (
+        allowedOrigins.indexOf(origin) !== -1 ||
+        origin.startsWith("http://localhost:")
+      ) {
+        return callback(null, true);
+      }
+
+      return callback(new Error("Not allowed by CORS"));
+    },
     credentials: true,
   }),
 );
