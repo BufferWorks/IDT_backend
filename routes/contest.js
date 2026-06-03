@@ -8,6 +8,8 @@ const entryController = require("../controllers/entryController");
 const voteController = require("../controllers/voteController");
 
 // Static Routes (must come before /:contestID)
+router.get("/user-profile/:userId", entryController.getPublicUserProfile);
+
 router.post(
   "/create",
   (req, res, next) => {
@@ -30,7 +32,10 @@ router.get(
   verifyFirebaseToken,
   entryController.getUserEntries,
 );
+
+router.get("/entries/explore", entryController.getExploreEntries);
 router.get("/entries/:entryId", entryController.getEntryById);
+router.patch("/entries/:entryId/verification", entryController.updateVerificationStatus);
 
 // Dynamic Routes
 router.get("/:contestID", contestController.getContestById);

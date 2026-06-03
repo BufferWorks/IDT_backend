@@ -147,25 +147,35 @@ exports.getParticipants = async (req, res) => {
       .lean()
       .sort({ createdAt: -1 });
 
+    const isAdmin = req.query.admin === 'true';
+
     // Enrichment Map
-    const participantsWithEntries = await Promise.all(
+      const rawParticipantsWithEntries = await Promise.all(
       participations.map(async (p) => {
-        const entry = await ContestEntry.findOne({ participationId: p._id })
-          .select("_id images videoUrl entryNumber")
+        const entryAny = await ContestEntry.findOne({ participationId: p._id })
+          .select("_id images videoUrl entryNumber verificationStatus")
           .lean();
+        
+        // If not admin, completely exclude the participant if their entry is rejected
+        if (!isAdmin && entryAny && entryAny.verificationStatus === 'REJECTED') {
+           return null;
+        }
         
         return {
           ...p,
-          entryId: entry ? entry._id.toString() : null,
-          hasEntry: !!entry,
-          entryNumber: entry ? entry.entryNumber : null,
+          entryId: entryAny ? entryAny._id.toString() : null,
+          hasEntry: !!entryAny,
+          entryNumber: entryAny ? entryAny.entryNumber : null,
           entryThumbnail:
-            entry && entry.images && entry.images.length > 0
-              ? entry.images[0]
+            entryAny && entryAny.images && entryAny.images.length > 0
+              ? entryAny.images[0]
               : null,
+          verificationStatus: entryAny ? (entryAny.verificationStatus || 'PENDING') : 'PENDING',
         };
       }),
     );
+    
+    const participantsWithEntries = rawParticipantsWithEntries.filter(p => p !== null);
 
     return res.status(200).json({ participants: participantsWithEntries });
   } catch (err) {

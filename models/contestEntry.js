@@ -36,6 +36,11 @@ const contestEntrySchema = new mongoose.Schema(
     bio: { type: String },
 
     isApproved: { type: Boolean, default: true }, // no approval flow for now
+    verificationStatus: { 
+      type: String, 
+      enum: ['PENDING', 'VERIFIED', 'REJECTED'], 
+      default: 'PENDING' 
+    },
     submittedAt: { type: Date, default: () => new Date(Date.now() + 5.5 * 60 * 60 * 1000) },
     views: { type: Number, default: 0 },
   },

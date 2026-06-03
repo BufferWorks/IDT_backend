@@ -27,4 +27,25 @@ const verifyOtp = async (mobile, inputOtp) => {
   return String(savedOtp) === String(inputOtp);
 };
 
-module.exports = { saveOtp, verifyOtp,saveTempUser ,getTempUser,deleteTempUser};
+const setSignupVerifiedFlag = async (mobileNumber) => {
+  await client.set(`signup_verified:${mobileNumber}`, "true", { EX: 900 }); // 15 mins
+};
+
+const getSignupVerifiedFlag = async (mobileNumber) => {
+  return await client.get(`signup_verified:${mobileNumber}`);
+};
+
+const deleteSignupVerifiedFlag = async (mobileNumber) => {
+  return await client.del(`signup_verified:${mobileNumber}`);
+};
+
+module.exports = { 
+  saveOtp, 
+  verifyOtp,
+  saveTempUser,
+  getTempUser,
+  deleteTempUser,
+  setSignupVerifiedFlag,
+  getSignupVerifiedFlag,
+  deleteSignupVerifiedFlag
+};

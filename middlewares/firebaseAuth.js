@@ -8,20 +8,19 @@ const verifyFirebaseToken = async (req, res, next) => {
   if (!token) return res.status(401).json({ message: "Token missing" });
 
   try {
-    // Try verifying as Firebase ID Token
-    const decoded = await admin.auth().verifyIdToken(token);
+    // Try verifying as Custom JWT first (New default for all logins)
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret');
     req.firebaseUID = decoded.uid;
     next();
   } catch (err) {
-    console.error("Firebase ID Token verification failed:", err.message);
-    // Fallback: Try verifying as Custom JWT (for Mobile Login)
+    // Fallback: Try verifying as Firebase ID Token (for older sessions)
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret');
+      const decoded = await admin.auth().verifyIdToken(token);
       req.firebaseUID = decoded.uid;
       next();
-    } catch (jwtErr) {
-      console.error("JWT verification failed:", jwtErr.message);
-      return res.status(403).json({ message: "Invalid token" });
+    } catch (firebaseErr) {
+      console.error("Token verification failed (JWT & Firebase):", err.message, firebaseErr.message);
+      return res.status(403).json({ message: "Invalid or expired token" });
     }
   }
 };

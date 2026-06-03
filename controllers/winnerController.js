@@ -13,7 +13,10 @@ exports.getPotentialWinners = async (req, res) => {
     if (!contest) return res.status(404).json({ message: "Contest not found" });
 
     // 1. Fetch all entries for this contest
-    const entries = await ContestEntry.find({ contestId: contestID })
+    const entries = await ContestEntry.find({ 
+      contestId: contestID,
+      verificationStatus: { $ne: 'REJECTED' }
+    })
       .populate("userId", "name profileImage email")
       .lean();
 
@@ -80,7 +83,10 @@ exports.publishWinners = async (req, res) => {
     }
 
     // 1. Re-calculate Top 3 (Security measure)
-    const entries = await ContestEntry.find({ contestId: contestID }).lean();
+    const entries = await ContestEntry.find({ 
+      contestId: contestID,
+      verificationStatus: { $ne: 'REJECTED' }
+    }).lean();
     const results = await Promise.all(
       entries.map(async (entry) => {
         const voteCount = await Vote.countDocuments({ entryId: entry._id });

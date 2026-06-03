@@ -2,8 +2,9 @@ const User = require('../models/user');
 const { firebaseAuth } = require('../services/firebase');
 const { createUserWithEmailAndPassword, signInWithEmailAndPassword } = require('firebase/auth');
 const generateOtp = require('../utils/otpGenerator');
-const { saveOtp, verifyOtp, saveTempUser, getTempUser, deleteTempUser } = require('../services/otpService');
+const { saveOtp, verifyOtp, saveTempUser, getTempUser, deleteTempUser, setSignupVerifiedFlag, getSignupVerifiedFlag, deleteSignupVerifiedFlag } = require('../services/otpService');
 const { sendOtp } = require('../services/fast2sms');
+const jwt = require('jsonwebtoken');
 
 // Helper to sanitize phone numbers
 const normalizeMobile = (num) => {
@@ -82,8 +83,8 @@ exports.verifyOtp = async (req, res) => {
     // Clean up Redis
     await deleteTempUser(mobileNumber)
 
-    // Get Token
-    const token = await firebaseUser.user.getIdToken();
+    // Generate long-lived JWT (consistent across all login methods)
+    const token = jwt.sign({ uid: firebaseUser.user.uid }, process.env.JWT_SECRET || 'dev-secret', { expiresIn: '30d' });
     const userObj = user.toObject();
     userObj.token = token;
 
@@ -115,7 +116,7 @@ exports.loginWithEmail = async (req, res) => {
       return res.status(404).json({ message: "User not found in database" });
     }
 
-    const token = await firebaseUser.user.getIdToken();
+    const token = jwt.sign({ uid: firebaseUID }, process.env.JWT_SECRET || 'dev-secret', { expiresIn: '30d' });
     const userObj = user.toObject();
     userObj.token = token;
 
@@ -161,7 +162,7 @@ exports.mobileLogin = async (req, res) => {
 
 
 
-const jwt = require('jsonwebtoken'); // Added for mobile login token
+
 
 // ✅ Verify Mobile OTP (OTP Step 2)
 exports.verifyMobileLoginOtp = async (req, res) => {
@@ -298,5 +299,129 @@ exports.getProfile = async (req, res) => {
   } catch (err) {
     console.error('Get profile error', err);
     return res.status(500).json({ message: 'Server error', error: err.message });
+  }
+};
+
+// ✅ Refresh Token
+exports.refreshToken = async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ message: "No token provided" });
+
+    // Decode token ignoring expiry
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret', { ignoreExpiration: true });
+    
+    // Find user to ensure they still exist and aren't deleted
+    const user = await User.findOne({ firebaseUID: decoded.uid });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Generate new 30-day token
+    const newToken = jwt.sign({ uid: decoded.uid }, process.env.JWT_SECRET || 'dev-secret', { expiresIn: '30d' });
+
+    return res.status(200).json({ token: newToken });
+  } catch (err) {
+    console.error("Refresh token error:", err.message);
+    return res.status(403).json({ message: "Invalid token" });
+  }
+};
+
+// ✅ New Signup Flow Step 1: Initiate Mobile
+exports.signupInitiateMobile = async (req, res) => {
+  try {
+    let { mobileNumber } = req.body;
+    mobileNumber = normalizeMobile(mobileNumber);
+
+    if (!mobileNumber) {
+      return res.status(400).json({ message: "Mobile number is required" });
+    }
+
+    const existingUser = await User.findOne({ mobileNumber });
+    if (existingUser) {
+      return res.status(409).json({ message: "Mobile number already registered. Please sign in.", redirect: "login" });
+    }
+
+    const otp = generateOtp();
+    await saveOtp(mobileNumber, otp);
+
+    try {
+      await sendOtp(mobileNumber, otp);
+    } catch (error) {
+      console.log("OTP Send Failed. Proceeding with Mock OTP 1204.");
+    }
+
+    return res.status(200).json({ message: "OTP sent to your WhatsApp number" });
+  } catch (err) {
+    console.error("Signup initiate error", err);
+    return res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+// ✅ New Signup Flow Step 2: Verify OTP
+exports.verifySignupOtp = async (req, res) => {
+  try {
+    let { mobileNumber, otp } = req.body;
+    mobileNumber = normalizeMobile(mobileNumber);
+
+    const isValid = await verifyOtp(mobileNumber, otp);
+    if (!isValid) {
+      return res.status(400).json({ message: 'Invalid or expired OTP' });
+    }
+
+    // Set a flag that this mobile is verified for signup (expires in 15 mins)
+    await setSignupVerifiedFlag(mobileNumber);
+
+    return res.status(200).json({ message: "OTP verified successfully. Proceed to details." });
+  } catch (err) {
+    console.error("Signup verify error", err);
+    return res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+// ✅ New Signup Flow Step 3: Complete Signup
+exports.completeSignup = async (req, res) => {
+  try {
+    let { name, email, mobileNumber, dob, fatherOrHusbandName, streetAddress, city, gender, password } = req.body;
+    mobileNumber = normalizeMobile(mobileNumber);
+
+    // Ensure the mobile number was verified
+    const isVerified = await getSignupVerifiedFlag(mobileNumber);
+    if (!isVerified) {
+      return res.status(403).json({ message: "Session expired or mobile not verified. Please verify OTP again." });
+    }
+
+    // Create Firebase User
+    const firebaseUser = await createUserWithEmailAndPassword(firebaseAuth, email, password);
+    
+    // Create MongoDB User
+    const user = await User.create({
+      firebaseUID: firebaseUser.user.uid,
+      name,
+      email,
+      mobileNumber,
+      dob,
+      fatherOrHusbandName,
+      streetAddress,
+      city,
+      gender,
+    });
+
+    // Cleanup verified flag
+    await deleteSignupVerifiedFlag(mobileNumber);
+
+    // Generate JWT
+    const token = jwt.sign({ uid: firebaseUser.user.uid }, process.env.JWT_SECRET || 'dev-secret', { expiresIn: '30d' });
+    const userObj = user.toObject();
+    userObj.token = token;
+
+    return res.status(201).json({
+      message: "User registered successfully",
+      user: userObj,
+    });
+  } catch (err) {
+    console.error("Complete signup error:", err.message);
+    if (err.code === 'auth/email-already-in-use') {
+      return res.status(400).json({ message: "Email is already registered" });
+    }
+    return res.status(500).json({ message: "Server error", error: err.message });
   }
 };

@@ -15,8 +15,20 @@ const userSchema = new mongoose.Schema({
     required: true,
     unique: true,
   },
-  age: {
-    type: Number,
+  dob: {
+    type: String,
+    required: true,
+  },
+  fatherOrHusbandName: {
+    type: String,
+    required: true,
+  },
+  streetAddress: {
+    type: String,
+    required: true,
+  },
+  city: {
+    type: String,
     required: true,
   },
   gender: {

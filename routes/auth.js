@@ -17,9 +17,13 @@ router.post('/mobile-login', authController.mobileLogin);
 // Mobile Login (Step 2: verify OTP)
 router.post('/verify-mobile-login', authController.verifyMobileLoginOtp);
 
+// Auto Refresh Token
+router.post('/refresh-token', authController.refreshToken);
 
-
-
+// New 3-Step Signup Flow
+router.post('/signup-initiate-mobile', authController.signupInitiateMobile);
+router.post('/verify-signup-otp', authController.verifySignupOtp);
+router.post('/complete-signup', authController.completeSignup);
 
 const verifyFirebaseToken = require('../middlewares/firebaseAuth');
 const upload = require('../config/multer-config');
