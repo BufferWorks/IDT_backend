@@ -93,7 +93,7 @@ exports.uploadEntry = async (req, res) => {
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, '-')
           .replace(/(^-|-$)/g, '');
-        const votingUrl = `\${frontendBase}/vote/\${nameSlug}-\${entry.entryNumber}`;
+        const votingUrl = `${frontendBase}/vote/${nameSlug}-${entry.entryNumber}`;
         // Non-blocking – don't await so endpoint responds immediately
         sendEntryUploadWhatsApp(mobile, entry.entryNumber, votingUrl);
       }
