@@ -15,13 +15,18 @@ jobs:
 
       - name: Setup SSH
         run: |
+          set -x
           mkdir -p ~/.ssh
+          echo "mkdir OK"
 
           echo "${{ secrets.VPS_SSH_KEY_B64 }}" | base64 -d > ~/.ssh/id_ed25519
+          echo "base64 decode OK"
 
           chmod 600 ~/.ssh/id_ed25519
+          echo "chmod OK"
 
-          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+          ssh-keyscan -H ${{ secrets.VPS_HOST }}
+          echo "ssh-keyscan OK"
 
       - name: Verify SSH Key
         run: |
