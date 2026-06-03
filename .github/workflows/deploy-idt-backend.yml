@@ -10,23 +10,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Setup SSH
         run: |
-          set -x
           mkdir -p ~/.ssh
-          echo "mkdir OK"
 
           echo "${{ secrets.VPS_SSH_KEY_B64 }}" | base64 -d > ~/.ssh/id_ed25519
-          echo "base64 decode OK"
 
           chmod 600 ~/.ssh/id_ed25519
-          echo "chmod OK"
-
-          ssh-keyscan -H ${{ secrets.VPS_HOST }}
-          echo "ssh-keyscan OK"
 
       - name: Verify SSH Key
         run: |
