@@ -23,6 +23,17 @@ jobs:
 
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Debug SSH File
+        run: |
+          echo "File size:"
+          wc -c ~/.ssh/id_ed25519
+
+          echo "First line:"
+          head -n 1 ~/.ssh/id_ed25519
+
+          echo "Last line:"
+          tail -n 1 ~/.ssh/id_ed25519
       - name: Verify SSH key
         run: |
           ssh-keygen -y -f ~/.ssh/id_ed25519
