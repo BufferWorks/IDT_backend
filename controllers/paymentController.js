@@ -183,7 +183,6 @@ exports.checkRazorpayPayment = async (req, res) => {
     if (internalStatus === "SUCCESS") {
       await ContestParticipation.findByIdAndUpdate(payment.participationId, {
         isPaid: true,
-        status: "REGISTERED",
         paidAt: new Date(Date.now() + 5.5 * 60 * 60 * 1000),
         paymentId: payment._id,
       });

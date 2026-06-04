@@ -138,16 +138,18 @@ exports.getParticipants = async (req, res) => {
     const { contestID } = req.params;
     const ContestEntry = require("../models/contestEntry");
 
-    // Find all valid (paid) participations for this contest
-    const participations = await ContestParticipation.find({
-      contestId: contestID,
-      isPaid: true,
-    })
+    const isAdmin = req.query.admin === 'true';
+
+    // Find participations for this contest
+    const query = { contestId: contestID };
+    if (!isAdmin) {
+      query.isPaid = true; // Public view only sees paid participants
+    }
+
+    const participations = await ContestParticipation.find(query)
       .populate("userId", "name profileImage email mobileNumber")
       .lean()
       .sort({ createdAt: -1 });
-
-    const isAdmin = req.query.admin === 'true';
 
     // Enrichment Map
       const rawParticipantsWithEntries = await Promise.all(
@@ -155,6 +157,13 @@ exports.getParticipants = async (req, res) => {
         const entryAny = await ContestEntry.findOne({ participationId: p._id })
           .select("_id images videoUrl entryNumber verificationStatus")
           .lean();
+          
+        // Self-heal status if it was clobbered by the old payment webhook bug
+        if (entryAny && p.status === 'REGISTERED') {
+           p.status = 'SUBMITTED';
+           // Fire-and-forget DB update to permanently fix it
+           ContestParticipation.findByIdAndUpdate(p._id, { status: 'SUBMITTED' }).catch(e => console.error("Self-heal error:", e));
+        }
         
         // If not admin, completely exclude the participant if their entry is rejected
         if (!isAdmin && entryAny && entryAny.verificationStatus === 'REJECTED') {

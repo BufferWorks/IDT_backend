@@ -19,16 +19,20 @@ exports.uploadEntry = async (req, res) => {
     const contest = await Contest.findById(contestID);
     if (!contest) return res.status(404).json({ message: "Contest not found" });
 
-    const participation = await ContestParticipation.findOne({
+    let participation = await ContestParticipation.findOne({
       userId: user._id,
       contestId: contest._id,
     });
-    if (!participation)
-      return res
-        .status(400)
-        .json({ message: "User is not registered for this contest" });
-    if (!participation.isPaid)
-      return res.status(400).json({ message: "Payment not completed" });
+    
+    if (!participation) {
+      participation = await ContestParticipation.create({
+        userId: user._id,
+        contestId: contest._id,
+        isPaid: contest.entryFee && contest.entryFee > 0 ? false : true,
+        paymentAmount: contest.entryFee || 0,
+        status: "REGISTERED",
+      });
+    }
 
     // Collect uploaded files
     const images = [];
@@ -124,6 +128,7 @@ exports.getMyEntries = async (req, res) => {
     const entries = await ContestEntry.find({ userId: user._id })
       .populate("contestId")
       .populate("userId", "name")
+      .populate("participationId", "isPaid status paymentAmount")
       .sort({ createdAt: -1 });
 
     const Vote = require("../models/Vote");
