@@ -4,6 +4,25 @@ const ContestParticipation = require("../models/contestParticipation");
 const User = require("../models/user");
 const ContestWinner = require("../models/ContestWinner");
 const { sendEntryUploadWhatsApp } = require("../services/fast2sms");
+const cloudinary = require("cloudinary").v2;
+
+exports.getUploadSignature = (req, res) => {
+  try {
+    const timestamp = Math.round(new Date().getTime() / 1000);
+    const signature = cloudinary.utils.api_sign_request(
+      { timestamp, folder: "IDT-MEDIA/contest-entries" },
+      process.env.CLOUDINARY_API_SECRET
+    );
+    res.status(200).json({
+      signature,
+      timestamp,
+      cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+      apiKey: process.env.CLOUDINARY_API_KEY,
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to generate signature", error: error.message });
+  }
+};
 
 // POST /api/contests/:contestID/upload-entry
 exports.uploadEntry = async (req, res) => {
@@ -34,17 +53,23 @@ exports.uploadEntry = async (req, res) => {
       });
     }
 
-    // Collect uploaded files
+    // Collect uploaded files from Multipart (Legacy flow)
     const images = [];
     if (req.files && req.files["images"]) {
       for (const f of req.files["images"])
         images.push(f.path || f.location || f.secure_url || f.url);
+    }
+    // Collect uploaded files from JSON Body (New Signed URL flow)
+    if (req.body.imageUrl && images.length === 0) {
+      images.push(req.body.imageUrl);
     }
 
     let videoUrl = null;
     if (req.files && req.files["video"] && req.files["video"][0]) {
       const v = req.files["video"][0];
       videoUrl = v.path || v.location || v.secure_url || v.url;
+    } else if (req.body.videoUrl) {
+      videoUrl = req.body.videoUrl;
     }
 
     const bio = req.body.bio || "";

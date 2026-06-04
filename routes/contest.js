@@ -9,6 +9,7 @@ const voteController = require("../controllers/voteController");
 
 // Static Routes (must come before /:contestID)
 router.get("/user-profile/:userId", entryController.getPublicUserProfile);
+router.get("/upload-signature", verifyFirebaseToken, entryController.getUploadSignature);
 
 router.post(
   "/create",
