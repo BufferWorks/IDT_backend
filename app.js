@@ -11,6 +11,8 @@ const connectDB = require("./database/connection");
 
 const authRoute = require("./routes/auth");
 const contestRoutes = require("./routes/contest.js");
+const paymentRoutes = require("./routes/payment");
+const physicalContestRoutes = require("./routes/physicalContest");
 
 const PORT = process.env.PORT || 6000;
 
@@ -60,7 +62,8 @@ app.use(express.static(path.join(__dirname, "public")));
 
 app.use("/api/auth", authRoute);
 app.use("/api/contests", contestRoutes);
-app.use("/api/payment", require("./routes/payment"));
+app.use("/api/payment", paymentRoutes);
+app.use("/api/physical-contests", physicalContestRoutes);
 app.use("/api/deletion-requests", require("./routes/deletionRequest"));
 app.use("/api/gallery", require("./routes/gallery"));
 app.use("/api/notifications", require("./routes/notifications"));
