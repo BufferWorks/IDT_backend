@@ -35,10 +35,22 @@ jobs:
           ssh -o StrictHostKeyChecking=no \
           -i ~/.ssh/id_ed25519 \
           ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'EOF'
-            set -e
-            cd ${{ secrets.VPS_PATH }}
-            git pull origin main
-            docker compose down
-            docker compose build
-            docker compose up -d
+
+          echo "STEP 1"
+          cd ${{ secrets.VPS_PATH }}
+
+          echo "STEP 2"
+          git pull origin main
+
+          echo "STEP 3"
+          docker compose down
+
+          echo "STEP 4"
+          docker compose build
+
+          echo "STEP 5"
+          docker compose up -d
+
+          echo "STEP 6 DONE"
+
           EOF
