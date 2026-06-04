@@ -24,6 +24,12 @@ jobs:
         run: |
           ssh-keygen -y -f ~/.ssh/id_ed25519
 
+      - name: Test SSH Connectivity
+        run: |
+          timeout 15 bash -c "</dev/tcp/${{ secrets.VPS_HOST }}/22" \
+          && echo "SSH PORT OPEN" \
+          || echo "SSH PORT BLOCKED"
+
       - name: Deploy on VPS
         run: |
           ssh -o StrictHostKeyChecking=no \
