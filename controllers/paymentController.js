@@ -84,6 +84,90 @@ exports.initiatePayment = async (req, res) => {
   }
 };
 
+// 1.5. Initiate Native Payment (Mobile App SDK -> Backend)
+exports.initiatePaymentNative = async (req, res) => {
+  try {
+    const { contestId } = req.body;
+    const firebaseUID = req.firebaseUID;
+
+    if (!firebaseUID) return res.status(401).json({ message: "Unauthorized" });
+
+    const user = await User.findOne({ firebaseUID });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const contest = await Contest.findById(contestId);
+    if (!contest) return res.status(404).json({ message: "Contest not found" });
+
+    if (!contest.entryFee || contest.entryFee === 0) {
+      return res.status(400).json({ message: "Free contest, use /register endpoint" });
+    }
+
+    let participation = await ContestParticipation.findOne({
+      userId: user._id,
+      contestId: contest._id,
+    });
+
+    if (participation && participation.isPaid) {
+      return res.status(200).json({ message: "Already paid", participation });
+    }
+
+    if (!participation) {
+      participation = await ContestParticipation.create({
+        userId: user._id,
+        contestId: contest._id,
+        isPaid: false,
+        status: "REGISTERED",
+        paymentAmount: contest.entryFee,
+      });
+    }
+
+    const merchantOrderId = `IDT_${uuidv4().split("-")[0]}_${Date.now()}`;
+
+    const payment = await Payment.create({
+      userId: user._id,
+      contestId: contest._id,
+      participationId: participation._id,
+      merchantOrderId: merchantOrderId,
+      amount: contest.entryFee,
+      status: "INITIATED",
+    });
+
+    participation.paymentId = payment._id;
+    await participation.save();
+
+    // Directly create Razorpay Order
+    const order = await razorpayService.createOrder(
+      payment.amount,
+      "INR",
+      payment.merchantOrderId,
+      {
+        userId: payment.userId.toString(),
+        contestId: payment.contestId.toString(),
+        merchantOrderId: payment.merchantOrderId,
+      }
+    );
+
+    payment.razorpayOrderId = order.id;
+    await payment.save();
+
+    return res.status(200).json({
+      success: true,
+      key: razorpayService.getKeyId(),
+      orderId: order.id,
+      amount: order.amount,
+      currency: order.currency,
+      user: {
+        name: user.name || "User",
+        email: user.email || "user@example.com",
+        contact: user.mobileNumber || "",
+      },
+    });
+  } catch (err) {
+    console.error("initiatePaymentNative Error:", err);
+    return res.status(500).json({ message: "Native payment initiation failed", error: err.message });
+  }
+};
+
 // 2. Create Razorpay Order (Frontend -> Backend)
 exports.createRazorpayOrder = async (req, res) => {
   try {
@@ -126,6 +210,44 @@ exports.createRazorpayOrder = async (req, res) => {
     return res
       .status(500)
       .json({ message: "Failed to create Razorpay order", error: err.message });
+  }
+};
+
+// 2.5 Verify Native SDK Payment
+exports.verifyPaymentNative = async (req, res) => {
+  try {
+    const { razorpay_payment_id, razorpay_order_id, razorpay_signature } = req.body;
+    
+    if (!razorpay_payment_id || !razorpay_order_id || !razorpay_signature) {
+      return res.status(400).json({ message: "Missing Razorpay details" });
+    }
+
+    const isValid = razorpayService.verifySignature(razorpay_order_id, razorpay_payment_id, razorpay_signature);
+    
+    if (!isValid) {
+      return res.status(400).json({ message: "Invalid Signature" });
+    }
+
+    let payment = await Payment.findOne({ razorpayOrderId: razorpay_order_id });
+    if (!payment) {
+      return res.status(404).json({ message: "Internal payment record not found" });
+    }
+
+    payment.razorpayPaymentId = razorpay_payment_id;
+    payment.razorpaySignature = razorpay_signature;
+    payment.status = "SUCCESS";
+    await payment.save();
+
+    let participation = await ContestParticipation.findById(payment.participationId);
+    if (participation && !participation.isPaid) {
+      participation.isPaid = true;
+      await participation.save();
+    }
+
+    return res.status(200).json({ success: true, message: "Payment verified successfully" });
+  } catch (err) {
+    console.error("verifyPaymentNative Error:", err);
+    return res.status(500).json({ message: "Failed to verify native payment", error: err.message });
   }
 };
 

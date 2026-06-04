@@ -9,6 +9,18 @@ router.post(
   verifyFirebaseToken,
   paymentController.initiatePayment,
 );
+
+router.post(
+  "/initiate-native",
+  verifyFirebaseToken,
+  paymentController.initiatePaymentNative,
+);
+
+router.post(
+  "/verify-native",
+  verifyFirebaseToken,
+  paymentController.verifyPaymentNative,
+);
 router.get("/status", paymentController.getPaymentStatus); // Can be public or protected, normally public for React App access
 
 router.post("/create-order", paymentController.createRazorpayOrder); // Public/Protected depending on flow, usually public if called from frontend with referenceId
