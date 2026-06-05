@@ -10,7 +10,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Setup SSH
         run: |
@@ -32,25 +33,31 @@ jobs:
 
       - name: Deploy on VPS
         run: |
-          ssh -o StrictHostKeyChecking=no \
+          ssh \
+          -o StrictHostKeyChecking=no \
+          -o ConnectTimeout=20 \
           -i ~/.ssh/id_ed25519 \
           ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'EOF'
 
-          echo "STEP 1"
+          set -e
+
+          echo "===== STEP 1: CONNECTED ====="
+
+          echo "===== STEP 2: CHANGE DIRECTORY ====="
           cd ${{ secrets.VPS_PATH }}
 
-          echo "STEP 2"
+          echo "===== STEP 3: GIT PULL ====="
           git pull origin main
 
-          echo "STEP 3"
+          echo "===== STEP 4: DOCKER DOWN ====="
           docker compose down
 
-          echo "STEP 4"
+          echo "===== STEP 5: DOCKER BUILD ====="
           docker compose build
 
-          echo "STEP 5"
+          echo "===== STEP 6: DOCKER UP ====="
           docker compose up -d
 
-          echo "STEP 6 DONE"
+          echo "===== DEPLOYMENT COMPLETED ====="
 
           EOF
