@@ -250,6 +250,7 @@ exports.verifyPaymentNative = async (req, res) => {
          const user = await User.findById(participation.userId);
          const entry = await ContestEntry.findOne({ participationId: participation._id });
          if (user && entry && user.mobileNumber) {
+           console.log(`[WhatsApp] Triggering entry confirmation for ${user.mobileNumber} after Native Payment`);
            const frontendBase = process.env.FRONTEND_URL || 'https://idteventmanagement.online';
            const nameSlug = (user.name || 'user')
              .toLowerCase()
@@ -257,10 +258,14 @@ exports.verifyPaymentNative = async (req, res) => {
              .replace(/(^-|-$)/g, '');
            const votingUrl = `${frontendBase}/vote/${nameSlug}-${entry.entryNumber}`;
            sendEntryUploadWhatsApp(user.mobileNumber, entry.entryNumber, votingUrl);
+         } else {
+           console.log(`[WhatsApp] Skipped. User, Entry, or Mobile Number missing. (Entry exists? ${!!entry})`);
          }
       } catch (e) {
          console.error('WhatsApp notify error on payment:', e.message);
       }
+    } else {
+      console.log(`[WhatsApp] Skipped. Participation is already marked as paid.`);
     }
 
     return res.status(200).json({ success: true, message: "Payment verified successfully" });
@@ -338,6 +343,7 @@ exports.checkRazorpayPayment = async (req, res) => {
            const user = await User.findById(participation.userId);
            const entry = await ContestEntry.findOne({ participationId: participation._id });
            if (user && entry && user.mobileNumber) {
+             console.log(`[WhatsApp] Triggering entry confirmation for ${user.mobileNumber} after Web Payment`);
              const frontendBase = process.env.FRONTEND_URL || 'https://idteventmanagement.online';
              const nameSlug = (user.name || 'user')
                .toLowerCase()
@@ -345,10 +351,14 @@ exports.checkRazorpayPayment = async (req, res) => {
                .replace(/(^-|-$)/g, '');
              const votingUrl = `${frontendBase}/vote/${nameSlug}-${entry.entryNumber}`;
              sendEntryUploadWhatsApp(user.mobileNumber, entry.entryNumber, votingUrl);
+           } else {
+             console.log(`[WhatsApp] Skipped. User, Entry, or Mobile Number missing. (Entry exists? ${!!entry})`);
            }
         } catch (e) {
            console.error('WhatsApp notify error on payment:', e.message);
         }
+      } else {
+        console.log(`[WhatsApp] Skipped. Participation is already marked as paid.`);
       }
     }
 
