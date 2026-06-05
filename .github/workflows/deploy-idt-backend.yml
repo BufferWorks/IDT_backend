@@ -25,6 +25,10 @@ jobs:
         run: |
           ssh-keygen -y -f ~/.ssh/id_ed25519
 
+      - name: Show Runner IP
+        run: |
+          curl -4 ifconfig.me
+
       - name: Test SSH Connectivity
         run: |
           timeout 15 bash -c "</dev/tcp/${{ secrets.VPS_HOST }}/22" \
