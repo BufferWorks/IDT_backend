@@ -3,7 +3,7 @@ const Contest = require("../models/contest");
 const ContestParticipation = require("../models/contestParticipation");
 const Payment = require("../models/Payment");
 const User = require("../models/user");
-const ContestEntry = require("../models/ContestEntry");
+const ContestEntry = require("../models/contestEntry");
 const razorpayService = require("../services/razorpayService");
 const { sendEntryUploadWhatsApp } = require("../services/fast2sms");
 
