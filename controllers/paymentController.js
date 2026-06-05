@@ -3,7 +3,9 @@ const Contest = require("../models/contest");
 const ContestParticipation = require("../models/contestParticipation");
 const Payment = require("../models/Payment");
 const User = require("../models/user");
+const ContestEntry = require("../models/ContestEntry");
 const razorpayService = require("../services/razorpayService");
+const { sendEntryUploadWhatsApp } = require("../services/fast2sms");
 
 // 1. Initiate Payment (Mobile App -> Backend)
 // Returns a URL to the Frontend Checkout Page
@@ -242,6 +244,23 @@ exports.verifyPaymentNative = async (req, res) => {
     if (participation && !participation.isPaid) {
       participation.isPaid = true;
       await participation.save();
+
+      // Trigger WhatsApp
+      try {
+         const user = await User.findById(participation.userId);
+         const entry = await ContestEntry.findOne({ participationId: participation._id });
+         if (user && entry && user.mobileNumber) {
+           const frontendBase = process.env.FRONTEND_URL || 'https://idteventmanagement.online';
+           const nameSlug = (user.name || 'user')
+             .toLowerCase()
+             .replace(/[^a-z0-9]+/g, '-')
+             .replace(/(^-|-$)/g, '');
+           const votingUrl = `${frontendBase}/vote/${nameSlug}-${entry.entryNumber}`;
+           sendEntryUploadWhatsApp(user.mobileNumber, entry.entryNumber, votingUrl);
+         }
+      } catch (e) {
+         console.error('WhatsApp notify error on payment:', e.message);
+      }
     }
 
     return res.status(200).json({ success: true, message: "Payment verified successfully" });
@@ -303,15 +322,34 @@ exports.checkRazorpayPayment = async (req, res) => {
 
     // Update Participation
     if (internalStatus === "SUCCESS") {
-      await ContestParticipation.findByIdAndUpdate(payment.participationId, {
-        isPaid: true,
-        paidAt: new Date(Date.now() + 5.5 * 60 * 60 * 1000),
-        paymentId: payment._id,
-      });
+      let participation = await ContestParticipation.findById(payment.participationId);
+      if (participation && !participation.isPaid) {
+        participation.isPaid = true;
+        participation.paidAt = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+        participation.paymentId = payment._id;
+        await participation.save();
 
-      await Contest.findByIdAndUpdate(payment.contestId, {
-        $inc: { totalParticipants: 1 },
-      });
+        await Contest.findByIdAndUpdate(payment.contestId, {
+          $inc: { totalParticipants: 1 },
+        });
+
+        // Trigger WhatsApp
+        try {
+           const user = await User.findById(participation.userId);
+           const entry = await ContestEntry.findOne({ participationId: participation._id });
+           if (user && entry && user.mobileNumber) {
+             const frontendBase = process.env.FRONTEND_URL || 'https://idteventmanagement.online';
+             const nameSlug = (user.name || 'user')
+               .toLowerCase()
+               .replace(/[^a-z0-9]+/g, '-')
+               .replace(/(^-|-$)/g, '');
+             const votingUrl = `${frontendBase}/vote/${nameSlug}-${entry.entryNumber}`;
+             sendEntryUploadWhatsApp(user.mobileNumber, entry.entryNumber, votingUrl);
+           }
+        } catch (e) {
+           console.error('WhatsApp notify error on payment:', e.message);
+        }
+      }
     }
 
     return res.status(200).json({

@@ -112,22 +112,24 @@ exports.uploadEntry = async (req, res) => {
     participation.status = "SUBMITTED";
     await participation.save();
 
-    // ── Fire-and-forget WhatsApp confirmation ────────────────────────────────
-    try {
-      const mobile = user.mobileNumber;
-      if (mobile && entry.entryNumber) {
-        const frontendBase = process.env.FRONTEND_URL || 'https://idteventmanagement.online';
-        // Build slug from user's name: "John Doe" → "john-doe"
-        const nameSlug = (user.name || 'user')
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '-')
-          .replace(/(^-|-$)/g, '');
-        const votingUrl = `${frontendBase}/vote/${nameSlug}-${entry.entryNumber}`;
-        // Non-blocking – don't await so endpoint responds immediately
-        sendEntryUploadWhatsApp(mobile, entry.entryNumber, votingUrl);
+    // ── Fire-and-forget WhatsApp confirmation (Only if free or already paid) ──
+    if (participation.isPaid) {
+      try {
+        const mobile = user.mobileNumber;
+        if (mobile && entry.entryNumber) {
+          const frontendBase = process.env.FRONTEND_URL || 'https://idteventmanagement.online';
+          // Build slug from user's name: "John Doe" → "john-doe"
+          const nameSlug = (user.name || 'user')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/(^-|-$)/g, '');
+          const votingUrl = `${frontendBase}/vote/${nameSlug}-${entry.entryNumber}`;
+          // Non-blocking – don't await so endpoint responds immediately
+          sendEntryUploadWhatsApp(mobile, entry.entryNumber, votingUrl);
+        }
+      } catch (notifyErr) {
+        console.error('[uploadEntry] WhatsApp notify error (non-fatal):', notifyErr.message);
       }
-    } catch (notifyErr) {
-      console.error('[uploadEntry] WhatsApp notify error (non-fatal):', notifyErr.message);
     }
     // ────────────────────────────────────────────────────────────────────────
 
