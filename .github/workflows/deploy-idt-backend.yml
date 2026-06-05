@@ -44,7 +44,7 @@ jobs:
             ssh \
               -o StrictHostKeyChecking=no \
               -o ConnectTimeout=20 \
-              -i ~/.ssh/id_ed2519 \
+              -i ~/.ssh/id_ed25519 \
               ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "echo Connected" && break
 
             sleep 15
