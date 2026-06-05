@@ -27,37 +27,45 @@ jobs:
 
       - name: Show Runner IP
         run: |
+          echo "Runner IP:"
           curl -4 ifconfig.me
+          echo ""
 
       - name: Test SSH Connectivity
         run: |
-          timeout 15 bash -c "</dev/tcp/${{ secrets.VPS_HOST }}/22" \
-          && echo "SSH PORT OPEN" \
-          || echo "SSH PORT BLOCKED"
+          if timeout 15 bash -c "</dev/tcp/${{ secrets.VPS_HOST }}/22"; then
+            echo "SSH PORT OPEN"
+          else
+            echo "SSH PORT BLOCKED"
+            exit 1
+          fi
 
       - name: Deploy on VPS
         run: |
-          for i in 1 2 3 4 5
-          do
-            echo "Attempt $i"
-
-            ssh \
-              -o StrictHostKeyChecking=no \
-              -o ConnectTimeout=20 \
-              -i ~/.ssh/id_ed25519 \
-              ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "echo Connected" && break
-
-            sleep 15
-          done
-
           ssh \
             -o StrictHostKeyChecking=no \
+            -o ConnectTimeout=20 \
             -i ~/.ssh/id_ed25519 \
-            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'EOF'
-            set -e
-            cd ${{ secrets.VPS_PATH }}
-            git pull origin main
-            docker compose down
-            docker compose build
-            docker compose up -d
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << EOF
+
+          set -e
+
+          echo "===== CONNECTED ====="
+
+          cd ${{ secrets.VPS_PATH }}
+
+          echo "===== GIT PULL ====="
+          git pull origin main
+
+          echo "===== DOCKER DOWN ====="
+          docker compose down
+
+          echo "===== DOCKER BUILD ====="
+          docker compose build
+
+          echo "===== DOCKER UP ====="
+          docker compose up -d
+
+          echo "===== DEPLOYMENT COMPLETED ====="
+
           EOF
