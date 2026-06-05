@@ -7,6 +7,192 @@ const ContestEntry = require("../models/contestEntry");
 const razorpayService = require("../services/razorpayService");
 const { sendEntryUploadWhatsApp } = require("../services/fast2sms");
 
+// ============================================================================
+// 📱 ENDPOINTS FOR SDK PAYMENTS (NEW NATIVE FLOW)
+// ============================================================================
+
+// 1. Initiate Native Payment (Mobile App SDK -> Backend)
+exports.initiatePaymentNative = async (req, res) => {
+  try {
+    const { contestId } = req.body;
+    const firebaseUID = req.firebaseUID;
+
+    if (!firebaseUID) return res.status(401).json({ message: "Unauthorized" });
+
+    const user = await User.findOne({ firebaseUID });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const contest = await Contest.findById(contestId);
+    if (!contest) return res.status(404).json({ message: "Contest not found" });
+
+    if (!contest.entryFee || contest.entryFee === 0) {
+      return res
+        .status(400)
+        .json({ message: "Free contest, use /register endpoint" });
+    }
+
+    let participation = await ContestParticipation.findOne({
+      userId: user._id,
+      contestId: contest._id,
+    });
+
+    if (participation && participation.isPaid) {
+      return res.status(200).json({ message: "Already paid", participation });
+    }
+
+    if (!participation) {
+      participation = await ContestParticipation.create({
+        userId: user._id,
+        contestId: contest._id,
+        isPaid: false,
+        status: "REGISTERED",
+        paymentAmount: contest.entryFee,
+      });
+    }
+
+    const merchantOrderId = `IDT_${uuidv4().split("-")[0]}_${Date.now()}`;
+
+    const payment = await Payment.create({
+      userId: user._id,
+      contestId: contest._id,
+      participationId: participation._id,
+      merchantOrderId: merchantOrderId,
+      amount: contest.entryFee,
+      status: "INITIATED",
+    });
+
+    participation.paymentId = payment._id;
+    await participation.save();
+
+    // Directly create Razorpay Order
+    const order = await razorpayService.createOrder(
+      payment.amount,
+      "INR",
+      payment.merchantOrderId,
+      {
+        userId: payment.userId.toString(),
+        contestId: payment.contestId.toString(),
+        merchantOrderId: payment.merchantOrderId,
+      },
+    );
+
+    payment.razorpayOrderId = order.id;
+    await payment.save();
+
+    return res.status(200).json({
+      success: true,
+      key: razorpayService.getKeyId(),
+      orderId: order.id,
+      amount: order.amount,
+      currency: order.currency,
+      user: {
+        name: user.name || "User",
+        email: user.email || "user@example.com",
+        contact: user.mobileNumber || "",
+      },
+    });
+  } catch (err) {
+    console.error("initiatePaymentNative Error:", err);
+    return res
+      .status(500)
+      .json({
+        message: "Native payment initiation failed",
+        error: err.message,
+      });
+  }
+};
+
+// 2. Verify Native SDK Payment (Mobile App SDK -> Backend)
+// Called directly by the Flutter app after the Native Razorpay SDK returns Success
+exports.verifyPaymentNative = async (req, res) => {
+  try {
+    const { razorpay_payment_id, razorpay_order_id, razorpay_signature } =
+      req.body;
+
+    if (!razorpay_payment_id || !razorpay_order_id || !razorpay_signature) {
+      return res.status(400).json({ message: "Missing Razorpay details" });
+    }
+
+    const isValid = razorpayService.verifySignature(
+      razorpay_order_id,
+      razorpay_payment_id,
+      razorpay_signature,
+    );
+
+    if (!isValid) {
+      return res.status(400).json({ message: "Invalid Signature" });
+    }
+
+    let payment = await Payment.findOne({ razorpayOrderId: razorpay_order_id });
+    if (!payment) {
+      return res
+        .status(404)
+        .json({ message: "Internal payment record not found" });
+    }
+
+    payment.razorpayPaymentId = razorpay_payment_id;
+    payment.razorpaySignature = razorpay_signature;
+    payment.status = "SUCCESS";
+    await payment.save();
+
+    let participation = await ContestParticipation.findById(
+      payment.participationId,
+    );
+    if (participation && !participation.isPaid) {
+      participation.isPaid = true;
+      await participation.save();
+
+      // Trigger WhatsApp
+      try {
+        const user = await User.findById(participation.userId);
+        const entry = await ContestEntry.findOne({
+          participationId: participation._id,
+        });
+        if (user && entry && user.mobileNumber) {
+          console.log(
+            `[WhatsApp] Triggering entry confirmation for ${user.mobileNumber} after Native Payment`,
+          );
+          const frontendBase =
+            process.env.FRONTEND_URL || "https://idteventmanagement.online";
+          const nameSlug = (user.name || "user")
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/(^-|-$)/g, "");
+          const votingUrl = `${frontendBase}/vote/${nameSlug}-${entry.entryNumber}`;
+          sendEntryUploadWhatsApp(
+            user.mobileNumber,
+            entry.entryNumber,
+            votingUrl,
+          );
+        } else {
+          console.log(
+            `[WhatsApp] Skipped. User, Entry, or Mobile Number missing. (Entry exists? ${!!entry})`,
+          );
+        }
+      } catch (e) {
+        console.error("WhatsApp notify error on payment:", e.message);
+      }
+    } else {
+      console.log(
+        `[WhatsApp] Skipped. Participation is already marked as paid.`,
+      );
+    }
+
+    return res
+      .status(200)
+      .json({ success: true, message: "Payment verified successfully" });
+  } catch (err) {
+    console.error("verifyPaymentNative Error:", err);
+    return res
+      .status(500)
+      .json({ message: "Failed to verify native payment", error: err.message });
+  }
+};
+
+// ============================================================================
+// 💻 ENDPOINTS FOR WEB PAYMENTS (OLD WEB FLOW)
+// ============================================================================
+
 // 1. Initiate Payment (Mobile App -> Backend)
 // Returns a URL to the Frontend Checkout Page
 exports.initiatePayment = async (req, res) => {
@@ -86,197 +272,8 @@ exports.initiatePayment = async (req, res) => {
   }
 };
 
-// 1.5. Initiate Native Payment (Mobile App SDK -> Backend)
-exports.initiatePaymentNative = async (req, res) => {
-  try {
-    const { contestId } = req.body;
-    const firebaseUID = req.firebaseUID;
-
-    if (!firebaseUID) return res.status(401).json({ message: "Unauthorized" });
-
-    const user = await User.findOne({ firebaseUID });
-    if (!user) return res.status(404).json({ message: "User not found" });
-
-    const contest = await Contest.findById(contestId);
-    if (!contest) return res.status(404).json({ message: "Contest not found" });
-
-    if (!contest.entryFee || contest.entryFee === 0) {
-      return res.status(400).json({ message: "Free contest, use /register endpoint" });
-    }
-
-    let participation = await ContestParticipation.findOne({
-      userId: user._id,
-      contestId: contest._id,
-    });
-
-    if (participation && participation.isPaid) {
-      return res.status(200).json({ message: "Already paid", participation });
-    }
-
-    if (!participation) {
-      participation = await ContestParticipation.create({
-        userId: user._id,
-        contestId: contest._id,
-        isPaid: false,
-        status: "REGISTERED",
-        paymentAmount: contest.entryFee,
-      });
-    }
-
-    const merchantOrderId = `IDT_${uuidv4().split("-")[0]}_${Date.now()}`;
-
-    const payment = await Payment.create({
-      userId: user._id,
-      contestId: contest._id,
-      participationId: participation._id,
-      merchantOrderId: merchantOrderId,
-      amount: contest.entryFee,
-      status: "INITIATED",
-    });
-
-    participation.paymentId = payment._id;
-    await participation.save();
-
-    // Directly create Razorpay Order
-    const order = await razorpayService.createOrder(
-      payment.amount,
-      "INR",
-      payment.merchantOrderId,
-      {
-        userId: payment.userId.toString(),
-        contestId: payment.contestId.toString(),
-        merchantOrderId: payment.merchantOrderId,
-      }
-    );
-
-    payment.razorpayOrderId = order.id;
-    await payment.save();
-
-    return res.status(200).json({
-      success: true,
-      key: razorpayService.getKeyId(),
-      orderId: order.id,
-      amount: order.amount,
-      currency: order.currency,
-      user: {
-        name: user.name || "User",
-        email: user.email || "user@example.com",
-        contact: user.mobileNumber || "",
-      },
-    });
-  } catch (err) {
-    console.error("initiatePaymentNative Error:", err);
-    return res.status(500).json({ message: "Native payment initiation failed", error: err.message });
-  }
-};
-
-// 2. Create Razorpay Order (Frontend -> Backend)
-exports.createRazorpayOrder = async (req, res) => {
-  try {
-    const { referenceId } = req.body; // Internal Payment ID
-    if (!referenceId)
-      return res.status(400).json({ message: "Reference ID required" });
-
-    const payment = await Payment.findById(referenceId).populate("userId");
-    if (!payment)
-      return res.status(404).json({ message: "Payment record not found" });
-
-    // Create Order on Razorpay
-    const order = await razorpayService.createOrder(
-      payment.amount,
-      "INR",
-      payment.merchantOrderId, // receipt
-      {
-        userId: payment.userId._id.toString(),
-        contestId: payment.contestId.toString(),
-        merchantOrderId: payment.merchantOrderId,
-      },
-    );
-
-    // Update Payment with Razorpay Order ID
-    payment.razorpayOrderId = order.id;
-    await payment.save();
-
-    return res.status(200).json({
-      success: true,
-      key: razorpayService.getKeyId(),
-      order: order,
-      user: {
-        name: payment.userId.name || "User",
-        email: payment.userId.email || "user@example.com",
-        contact: payment.userId.mobile || "",
-      },
-    });
-  } catch (err) {
-    console.error("createRazorpayOrder Error:", err);
-    return res
-      .status(500)
-      .json({ message: "Failed to create Razorpay order", error: err.message });
-  }
-};
-
-// 2.5 Verify Native SDK Payment
-exports.verifyPaymentNative = async (req, res) => {
-  try {
-    const { razorpay_payment_id, razorpay_order_id, razorpay_signature } = req.body;
-    
-    if (!razorpay_payment_id || !razorpay_order_id || !razorpay_signature) {
-      return res.status(400).json({ message: "Missing Razorpay details" });
-    }
-
-    const isValid = razorpayService.verifySignature(razorpay_order_id, razorpay_payment_id, razorpay_signature);
-    
-    if (!isValid) {
-      return res.status(400).json({ message: "Invalid Signature" });
-    }
-
-    let payment = await Payment.findOne({ razorpayOrderId: razorpay_order_id });
-    if (!payment) {
-      return res.status(404).json({ message: "Internal payment record not found" });
-    }
-
-    payment.razorpayPaymentId = razorpay_payment_id;
-    payment.razorpaySignature = razorpay_signature;
-    payment.status = "SUCCESS";
-    await payment.save();
-
-    let participation = await ContestParticipation.findById(payment.participationId);
-    if (participation && !participation.isPaid) {
-      participation.isPaid = true;
-      await participation.save();
-
-      // Trigger WhatsApp
-      try {
-         const user = await User.findById(participation.userId);
-         const entry = await ContestEntry.findOne({ participationId: participation._id });
-         if (user && entry && user.mobileNumber) {
-           console.log(`[WhatsApp] Triggering entry confirmation for ${user.mobileNumber} after Native Payment`);
-           const frontendBase = process.env.FRONTEND_URL || 'https://idteventmanagement.online';
-           const nameSlug = (user.name || 'user')
-             .toLowerCase()
-             .replace(/[^a-z0-9]+/g, '-')
-             .replace(/(^-|-$)/g, '');
-           const votingUrl = `${frontendBase}/vote/${nameSlug}-${entry.entryNumber}`;
-           sendEntryUploadWhatsApp(user.mobileNumber, entry.entryNumber, votingUrl);
-         } else {
-           console.log(`[WhatsApp] Skipped. User, Entry, or Mobile Number missing. (Entry exists? ${!!entry})`);
-         }
-      } catch (e) {
-         console.error('WhatsApp notify error on payment:', e.message);
-      }
-    } else {
-      console.log(`[WhatsApp] Skipped. Participation is already marked as paid.`);
-    }
-
-    return res.status(200).json({ success: true, message: "Payment verified successfully" });
-  } catch (err) {
-    console.error("verifyPaymentNative Error:", err);
-    return res.status(500).json({ message: "Failed to verify native payment", error: err.message });
-  }
-};
-
-// 3. Verify Payment (Frontend -> Backend)
-// 3. Check Payment Status (Frontend -> Backend) - Replaces Signature Verification
+// 2. Check Razorpay Payment (Frontend Web -> Backend)
+// Called by the website checkout page after Razorpay succeeds
 exports.checkRazorpayPayment = async (req, res) => {
   try {
     const { paymentId } = req.body; // Razorpay Payment ID
@@ -327,7 +324,9 @@ exports.checkRazorpayPayment = async (req, res) => {
 
     // Update Participation
     if (internalStatus === "SUCCESS") {
-      let participation = await ContestParticipation.findById(payment.participationId);
+      let participation = await ContestParticipation.findById(
+        payment.participationId,
+      );
       if (participation && !participation.isPaid) {
         participation.isPaid = true;
         participation.paidAt = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
@@ -340,25 +339,38 @@ exports.checkRazorpayPayment = async (req, res) => {
 
         // Trigger WhatsApp
         try {
-           const user = await User.findById(participation.userId);
-           const entry = await ContestEntry.findOne({ participationId: participation._id });
-           if (user && entry && user.mobileNumber) {
-             console.log(`[WhatsApp] Triggering entry confirmation for ${user.mobileNumber} after Web Payment`);
-             const frontendBase = process.env.FRONTEND_URL || 'https://idteventmanagement.online';
-             const nameSlug = (user.name || 'user')
-               .toLowerCase()
-               .replace(/[^a-z0-9]+/g, '-')
-               .replace(/(^-|-$)/g, '');
-             const votingUrl = `${frontendBase}/vote/${nameSlug}-${entry.entryNumber}`;
-             sendEntryUploadWhatsApp(user.mobileNumber, entry.entryNumber, votingUrl);
-           } else {
-             console.log(`[WhatsApp] Skipped. User, Entry, or Mobile Number missing. (Entry exists? ${!!entry})`);
-           }
+          const user = await User.findById(participation.userId);
+          const entry = await ContestEntry.findOne({
+            participationId: participation._id,
+          });
+          if (user && entry && user.mobileNumber) {
+            console.log(
+              `[WhatsApp] Triggering entry confirmation for ${user.mobileNumber} after Web Payment`,
+            );
+            const frontendBase =
+              process.env.FRONTEND_URL || "https://idteventmanagement.online";
+            const nameSlug = (user.name || "user")
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, "-")
+              .replace(/(^-|-$)/g, "");
+            const votingUrl = `${frontendBase}/vote/${nameSlug}-${entry.entryNumber}`;
+            sendEntryUploadWhatsApp(
+              user.mobileNumber,
+              entry.entryNumber,
+              votingUrl,
+            );
+          } else {
+            console.log(
+              `[WhatsApp] Skipped. User, Entry, or Mobile Number missing. (Entry exists? ${!!entry})`,
+            );
+          }
         } catch (e) {
-           console.error('WhatsApp notify error on payment:', e.message);
+          console.error("WhatsApp notify error on payment:", e.message);
         }
       } else {
-        console.log(`[WhatsApp] Skipped. Participation is already marked as paid.`);
+        console.log(
+          `[WhatsApp] Skipped. Participation is already marked as paid.`,
+        );
       }
     }
 
@@ -377,7 +389,57 @@ exports.checkRazorpayPayment = async (req, res) => {
   }
 };
 
-// 4. Get Payment Status (Optional / Status Check)
+// 2. Create Razorpay Order (Frontend Web -> Backend)
+// Called by the website to fetch order details and open checkout
+exports.createRazorpayOrder = async (req, res) => {
+  try {
+    const { referenceId } = req.body; // Internal Payment ID
+    if (!referenceId)
+      return res.status(400).json({ message: "Reference ID required" });
+
+    const payment = await Payment.findById(referenceId).populate("userId");
+    if (!payment)
+      return res.status(404).json({ message: "Payment record not found" });
+
+    // Create Order on Razorpay
+    const order = await razorpayService.createOrder(
+      payment.amount,
+      "INR",
+      payment.merchantOrderId, // receipt
+      {
+        userId: payment.userId._id.toString(),
+        contestId: payment.contestId.toString(),
+        merchantOrderId: payment.merchantOrderId,
+      },
+    );
+
+    // Update Payment with Razorpay Order ID
+    payment.razorpayOrderId = order.id;
+    await payment.save();
+
+    return res.status(200).json({
+      success: true,
+      key: razorpayService.getKeyId(),
+      order: order,
+      user: {
+        name: payment.userId.name || "User",
+        email: payment.userId.email || "user@example.com",
+        contact: payment.userId.mobile || "",
+      },
+    });
+  } catch (err) {
+    console.error("createRazorpayOrder Error:", err);
+    return res
+      .status(500)
+      .json({ message: "Failed to create Razorpay order", error: err.message });
+  }
+};
+
+// ============================================================================
+// 🔧 UTILITY & WEBHOOK ENDPOINTS
+// ============================================================================
+
+// Get Payment Status (Optional / Status Check)
 exports.getPaymentStatus = async (req, res) => {
   // Kept for backward compatibility or polling if needed
   try {
@@ -411,7 +473,9 @@ exports.getPaymentDetailsById = async (req, res) => {
     return res.status(200).json({ payment });
   } catch (err) {
     console.error("getPaymentDetails Error:", err);
-    return res.status(500).json({ message: "Failed to fetch payment details", error: err.message });
+    return res
+      .status(500)
+      .json({ message: "Failed to fetch payment details", error: err.message });
   }
 };
 
