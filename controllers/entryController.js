@@ -380,12 +380,20 @@ exports.updateVerificationStatus = async (req, res) => {
 exports.getExploreEntries = async (req, res) => {
   try {
     // Find all entries that have a videoUrl and are approved
-    const entries = await ContestEntry.find({ 
+    const rawEntries = await ContestEntry.find({ 
       videoUrl: { $exists: true, $ne: null, $ne: "" },
       isApproved: true
     })
       .populate("userId", "name profileImage")
-      .populate("contestId", "name");
+      .populate("contestId", "name")
+      .populate({
+        path: "participationId",
+        match: { isPaid: true }, // Only populate if the participation is paid
+        select: "isPaid"
+      });
+
+    // Filter out entries where participation is unpaid (participationId will be null)
+    const entries = rawEntries.filter(e => e.participationId != null);
 
     const Vote = require("../models/Vote");
     
