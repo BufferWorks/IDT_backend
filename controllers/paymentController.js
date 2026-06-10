@@ -485,7 +485,7 @@ exports.handleCallback = async (req, res) => {
     const { event, payload } = req.body;
 
     console.log("======================================");
-    console.log(`🔔 RAZORPAY WEBHOOK HIT! Event: \${event}`);
+    console.log(`🔔 RAZORPAY WEBHOOK HIT! Event: ${event}`);
     console.log("======================================");
 
     // Verify webhook signature if secret is provided in .env
@@ -517,12 +517,12 @@ exports.handleCallback = async (req, res) => {
 
       const payment = await Payment.findOne({ razorpayOrderId });
       if (!payment) {
-        console.log(`[Webhook] Payment not found in DB for order: \${razorpayOrderId}`);
+        console.log(`[Webhook] Payment not found in DB for order: ${razorpayOrderId}`);
         return res.status(200).send("OK");
       }
 
       if (payment.status === "SUCCESS") {
-        console.log(`[Webhook] Payment already SUCCESS in DB: \${razorpayOrderId}`);
+        console.log(`[Webhook] Payment already SUCCESS in DB: ${razorpayOrderId}`);
         return res.status(200).send("OK");
       }
 
@@ -549,20 +549,20 @@ exports.handleCallback = async (req, res) => {
           const user = await User.findById(participation.userId);
           const entry = await ContestEntry.findOne({ participationId: participation._id });
           if (user && entry && user.mobileNumber) {
-            console.log(`[Webhook] Triggering entry confirmation for \${user.mobileNumber}`);
+            console.log(`[Webhook] Triggering entry confirmation for ${user.mobileNumber}`);
             const frontendBase = process.env.FRONTEND_URL || "https://idteventmanagement.online";
             const nameSlug = (user.name || "user")
               .toLowerCase()
               .replace(/[^a-z0-9]+/g, "-")
               .replace(/(^-|-$)/g, "");
-            const votingUrl = `\${frontendBase}/vote/\${nameSlug}-\${entry.entryNumber}`;
+            const votingUrl = `${frontendBase}/vote/${nameSlug}-${entry.entryNumber}`;
             sendEntryUploadWhatsApp(user.mobileNumber, entry.entryNumber, votingUrl);
           }
         } catch (e) {
           console.error("WhatsApp notify error on webhook payment:", e.message);
         }
       }
-      console.log(`[Webhook] Successfully processed payment for order: \${razorpayOrderId}`);
+      console.log(`[Webhook] Successfully processed payment for order: ${razorpayOrderId}`);
     }
 
     res.status(200).send("OK");
