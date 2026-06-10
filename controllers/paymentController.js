@@ -484,7 +484,9 @@ exports.handleCallback = async (req, res) => {
     const crypto = require("crypto");
     const { event, payload } = req.body;
 
-    console.log(`Razorpay Webhook Received: \${event}`);
+    console.log("======================================");
+    console.log(`🔔 RAZORPAY WEBHOOK HIT! Event: \${event}`);
+    console.log("======================================");
 
     // Verify webhook signature if secret is provided in .env
     const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
