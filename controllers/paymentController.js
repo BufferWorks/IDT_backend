@@ -480,7 +480,92 @@ exports.getPaymentDetailsById = async (req, res) => {
 };
 
 exports.handleCallback = async (req, res) => {
-  // Razorpay Webhooks can be handled here
-  console.log("Razorpay Webhook:", req.body);
-  res.status(200).send("OK");
+  try {
+    const crypto = require("crypto");
+    const { event, payload } = req.body;
+
+    console.log(`Razorpay Webhook Received: \${event}`);
+
+    // Verify webhook signature if secret is provided in .env
+    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+    if (webhookSecret) {
+      const shasum = crypto.createHmac("sha256", webhookSecret);
+      shasum.update(JSON.stringify(req.body));
+      const digest = shasum.digest("hex");
+
+      if (digest !== req.headers["x-razorpay-signature"]) {
+        console.error("Invalid Webhook Signature");
+        return res.status(400).send("Invalid signature");
+      }
+    }
+
+    // We can handle both order.paid and payment.captured
+    if (event === "payment.captured" || event === "order.paid") {
+      let razorpayOrderId;
+      let razorpayPaymentId;
+
+      if (event === "payment.captured") {
+        razorpayOrderId = payload.payment.entity.order_id;
+        razorpayPaymentId = payload.payment.entity.id;
+      } else if (event === "order.paid") {
+        razorpayOrderId = payload.order.entity.id;
+      }
+
+      if (!razorpayOrderId) return res.status(200).send("No order_id in payload");
+
+      const payment = await Payment.findOne({ razorpayOrderId });
+      if (!payment) {
+        console.log(`[Webhook] Payment not found in DB for order: \${razorpayOrderId}`);
+        return res.status(200).send("OK");
+      }
+
+      if (payment.status === "SUCCESS") {
+        console.log(`[Webhook] Payment already SUCCESS in DB: \${razorpayOrderId}`);
+        return res.status(200).send("OK");
+      }
+
+      // Mark payment as SUCCESS
+      payment.status = "SUCCESS";
+      if (razorpayPaymentId) payment.razorpayPaymentId = razorpayPaymentId;
+      payment.paidAt = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+      await payment.save();
+
+      // Update Participation
+      let participation = await ContestParticipation.findById(payment.participationId);
+      if (participation && !participation.isPaid) {
+        participation.isPaid = true;
+        participation.paidAt = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+        participation.paymentId = payment._id;
+        await participation.save();
+
+        await Contest.findByIdAndUpdate(payment.contestId, {
+          $inc: { totalParticipants: 1 },
+        });
+
+        // Trigger WhatsApp
+        try {
+          const user = await User.findById(participation.userId);
+          const entry = await ContestEntry.findOne({ participationId: participation._id });
+          if (user && entry && user.mobileNumber) {
+            console.log(`[Webhook] Triggering entry confirmation for \${user.mobileNumber}`);
+            const frontendBase = process.env.FRONTEND_URL || "https://idteventmanagement.online";
+            const nameSlug = (user.name || "user")
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, "-")
+              .replace(/(^-|-$)/g, "");
+            const votingUrl = `\${frontendBase}/vote/\${nameSlug}-\${entry.entryNumber}`;
+            sendEntryUploadWhatsApp(user.mobileNumber, entry.entryNumber, votingUrl);
+          }
+        } catch (e) {
+          console.error("WhatsApp notify error on webhook payment:", e.message);
+        }
+      }
+      console.log(`[Webhook] Successfully processed payment for order: \${razorpayOrderId}`);
+    }
+
+    res.status(200).send("OK");
+  } catch (err) {
+    console.error("Webhook Error:", err);
+    res.status(500).send("Webhook Error");
+  }
 };
