@@ -15,18 +15,7 @@ const userSchema = new mongoose.Schema({
     required: true,
     unique: true,
   },
-  dob: {
-    type: String,
-    required: true,
-  },
-  fatherOrHusbandName: {
-    type: String,
-    required: true,
-  },
-  streetAddress: {
-    type: String,
-    required: true,
-  },
+
   city: {
     type: String,
     required: true,
@@ -53,6 +42,11 @@ const userSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'ContestWinner'
   }],
+  referralCode: {
+    type: String,
+    unique: true,
+    sparse: true, // allows multiple null values — safe for existing users
+  },
 }, {
   timestamps: true,
 });

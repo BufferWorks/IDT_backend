@@ -13,6 +13,7 @@ const authRoute = require("./routes/auth");
 const contestRoutes = require("./routes/contest.js");
 const paymentRoutes = require("./routes/payment");
 const physicalContestRoutes = require("./routes/physicalContest");
+const referralRoutes = require("./routes/referral");
 
 const PORT = process.env.PORT || 6000;
 
@@ -26,7 +27,7 @@ app.use(
         "https://idteventmanagement.online",
         "https://www.idteventmanagement.online",
         "http://idteventmanagement.online",
-        "http://10.203.57.169:4000",
+        "http://10.227.83.169:4000",
       ];
 
       // Allow requests with no origin (like mobile apps or curl requests)
@@ -67,6 +68,7 @@ app.use("/api/physical-contests", physicalContestRoutes);
 app.use("/api/deletion-requests", require("./routes/deletionRequest"));
 app.use("/api/gallery", require("./routes/gallery"));
 app.use("/api/notifications", require("./routes/notifications"));
+app.use("/api/referral", referralRoutes);
 
 app.get("/", (req, res) => {
   return res.json({ message: "pinging" });

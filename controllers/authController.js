@@ -12,6 +12,24 @@ const normalizeMobile = (num) => {
   return num.toString().replace(/\s+/g, '').replace(/^\+91/, '');
 };
 
+// Helper to generate a unique referral code: IDT + 6 uppercase alphanumeric chars
+const generateUniqueReferralCode = async () => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let referralCode;
+  let attempts = 0;
+  do {
+    let suffix = '';
+    for (let i = 0; i < 6; i++) {
+      suffix += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    referralCode = `IDT${suffix}`;
+    const existing = await User.findOne({ referralCode });
+    if (!existing) break;
+    attempts++;
+  } while (attempts < 5);
+  return referralCode;
+};
+
 // ✅ Signup Controller (Step 1: Form Submission)
 exports.signupInitiate = async (req, res) => {
   try {
@@ -380,7 +398,7 @@ exports.verifySignupOtp = async (req, res) => {
 // ✅ New Signup Flow Step 3: Complete Signup
 exports.completeSignup = async (req, res) => {
   try {
-    let { name, email, mobileNumber, dob, fatherOrHusbandName, streetAddress, city, gender, password } = req.body;
+    let { name, email, mobileNumber, city, gender, password } = req.body;
     mobileNumber = normalizeMobile(mobileNumber);
 
     // Ensure the mobile number was verified
@@ -398,15 +416,22 @@ exports.completeSignup = async (req, res) => {
       name,
       email,
       mobileNumber,
-      dob,
-      fatherOrHusbandName,
-      streetAddress,
       city,
       gender,
     });
 
     // Cleanup verified flag
     await deleteSignupVerifiedFlag(mobileNumber);
+
+    // Generate and assign unique referral code
+    try {
+      const referralCode = await generateUniqueReferralCode();
+      user.referralCode = referralCode;
+      await user.save();
+    } catch (refErr) {
+      // Non-fatal — user is created, just without referral code yet
+      console.error('Referral code generation failed (non-fatal):', refErr.message);
+    }
 
     // Generate JWT
     const token = jwt.sign({ uid: firebaseUser.user.uid }, process.env.JWT_SECRET || 'dev-secret', { expiresIn: '30d' });
@@ -423,5 +448,32 @@ exports.completeSignup = async (req, res) => {
       return res.status(400).json({ message: "Email is already registered" });
     }
     return res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+// ✅ Backfill referral code for existing users who signed up before this feature
+// Called by the app on first load if user.referralCode is missing
+exports.ensureReferralCode = async (req, res) => {
+  try {
+    const firebaseUID = req.firebaseUID;
+    if (!firebaseUID) return res.status(401).json({ message: 'Unauthorized' });
+
+    const user = await User.findOne({ firebaseUID });
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    // Already has a code — return it
+    if (user.referralCode) {
+      return res.status(200).json({ referralCode: user.referralCode });
+    }
+
+    // Generate one
+    const referralCode = await generateUniqueReferralCode();
+    user.referralCode = referralCode;
+    await user.save();
+
+    return res.status(200).json({ referralCode });
+  } catch (err) {
+    console.error('ensureReferralCode error:', err.message);
+    return res.status(500).json({ message: 'Server error', error: err.message });
   }
 };

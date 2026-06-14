@@ -6,6 +6,7 @@ const User = require("../models/user");
 const ContestEntry = require("../models/contestEntry");
 const razorpayService = require("../services/razorpayService");
 const { sendEntryUploadWhatsApp } = require("../services/fast2sms");
+const { processReferralOnPaymentSuccess } = require("../utils/referralHelper");
 
 // ============================================================================
 // 📱 ENDPOINTS FOR SDK PAYMENTS (NEW NATIVE FLOW)
@@ -141,6 +142,11 @@ exports.verifyPaymentNative = async (req, res) => {
     if (participation && !participation.isPaid) {
       participation.isPaid = true;
       await participation.save();
+
+      // Process referral completion (non-blocking)
+      processReferralOnPaymentSuccess(participation._id).catch(e =>
+        console.error('[Referral] Non-fatal error on native payment:', e.message)
+      );
 
       // Trigger WhatsApp
       try {
@@ -332,6 +338,11 @@ exports.checkRazorpayPayment = async (req, res) => {
         participation.paidAt = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
         participation.paymentId = payment._id;
         await participation.save();
+
+        // Process referral completion (non-blocking)
+        processReferralOnPaymentSuccess(participation._id).catch(e =>
+          console.error('[Referral] Non-fatal error on web payment:', e.message)
+        );
 
         await Contest.findByIdAndUpdate(payment.contestId, {
           $inc: { totalParticipants: 1 },
@@ -539,6 +550,11 @@ exports.handleCallback = async (req, res) => {
         participation.paidAt = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
         participation.paymentId = payment._id;
         await participation.save();
+
+        // Process referral completion (non-blocking)
+        processReferralOnPaymentSuccess(participation._id).catch(e =>
+          console.error('[Referral] Non-fatal error on webhook payment:', e.message)
+        );
 
         await Contest.findByIdAndUpdate(payment.contestId, {
           $inc: { totalParticipants: 1 },

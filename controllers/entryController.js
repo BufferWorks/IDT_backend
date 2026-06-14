@@ -1,6 +1,7 @@
 const Contest = require("../models/contest");
 const ContestEntry = require("../models/contestEntry");
 const ContestParticipation = require("../models/contestParticipation");
+const Referral = require("../models/Referral");
 const User = require("../models/user");
 const ContestWinner = require("../models/ContestWinner");
 const { sendEntryUploadWhatsApp } = require("../services/fast2sms");
@@ -111,6 +112,56 @@ exports.uploadEntry = async (req, res) => {
     // Update participation status
     participation.status = "SUBMITTED";
     await participation.save();
+
+    // ── Referral Tracking (non-blocking, never fails entry upload) ──
+    const referralCode = req.body.referralCode;
+    if (referralCode && contest.entryFee > 0) {
+      (async () => {
+        try {
+          console.log(`[Referral Debug] Processing code: ${referralCode} for referee: ${user.name}`);
+          const referrer = await User.findOne({ referralCode: referralCode.toUpperCase().trim() });
+          if (!referrer) {
+            console.log(`[Referral Debug] Referrer with code ${referralCode} not found in DB.`);
+            return;
+          }
+
+          // Block self-referral
+          if (referrer._id.toString() === user._id.toString()) {
+            console.log(`[Referral Debug] Blocked self-referral for user ${user.name}.`);
+            return;
+          }
+
+          // Prevent duplicate referral for same referee+contest combo
+          const existingReferral = await Referral.findOne({
+            refereeId: user._id,
+            contestId: contest._id,
+          });
+          if (existingReferral) {
+            console.log(`[Referral Debug] Duplicate referral detected for referee ${user.name} and contest ${contest.name}.`);
+            return;
+          }
+
+          // Snapshot both amounts right now
+          const percent = parseFloat(process.env.REFERRAL_PERCENT) || 30;
+          const earnedAmount = parseFloat(((contest.entryFee * percent) / 100).toFixed(2));
+
+          await Referral.create({
+            referrerId: referrer._id,
+            refereeId: user._id,
+            contestId: contest._id,
+            participationId: participation._id,
+            referralCode: referralCode.toUpperCase().trim(),
+            entryFee: contest.entryFee,
+            earnedAmount,
+            status: 'PENDING',
+          });
+          console.log(`[Referral] Created PENDING referral. Referrer: ${referrer.name}, Fee: ₹${contest.entryFee}, Earned: ₹${earnedAmount}`);
+        } catch (refErr) {
+          console.error('[Referral] Non-fatal error creating referral record:', refErr.message);
+        }
+      })();
+    }
+    // ────────────────────────────────────────────────────────────────────────
 
     // ── Fire-and-forget WhatsApp confirmation (Only if free or already paid) ──
     if (participation.isPaid) {
