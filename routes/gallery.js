@@ -14,7 +14,7 @@ router.post(
     req.folderName = "IDT-MEDIA/gallery";
     next();
   },
-  upload.array("images", 20),
+  upload.r2Upload.array("images", 20),
   galleryController.uploadImages
 );
 

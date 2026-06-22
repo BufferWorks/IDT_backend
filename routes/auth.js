@@ -35,7 +35,7 @@ const setProfileFolder = (req, res, next) => {
 };
 
 router.get('/profile', verifyFirebaseToken, authController.getProfile);
-router.put('/profile', verifyFirebaseToken, setProfileFolder, upload.single('profileImage'), authController.updateProfile);
+router.put('/profile', verifyFirebaseToken, setProfileFolder, upload.r2Upload.single('profileImage'), authController.updateProfile);
 router.post('/change-password', verifyFirebaseToken, authController.changePassword);
 router.get('/ensure-referral-code', verifyFirebaseToken, authController.ensureReferralCode);
 

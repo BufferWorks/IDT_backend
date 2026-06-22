@@ -25,7 +25,7 @@ router.post(
     req.folderName = "IDT-MEDIA/notifications";
     next();
   },
-  upload.single('image'),
+  upload.r2Upload.single('image'),
   notificationController.uploadImage
 );
 

@@ -10,7 +10,7 @@ router.post(
     req.folderName = "IDT-MEDIA/physical-contests";
     next();
   },
-  upload.single("bannerImage"),
+  upload.r2Upload.single("bannerImage"),
   physicalContestController.createPhysicalContest
 );
 
@@ -27,7 +27,7 @@ router.post(
     req.folderName = "IDT-MEDIA/physical-entries";
     next();
   },
-  upload.fields([
+  upload.r2Upload.fields([
     { name: "passportPhoto", maxCount: 1 },
     { name: "paymentScreenshot", maxCount: 1 },
   ]),

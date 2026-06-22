@@ -7,6 +7,10 @@ const ContestWinner = require("../models/ContestWinner");
 const { sendEntryUploadWhatsApp } = require("../services/fast2sms");
 const cloudinary = require("cloudinary").v2;
 
+const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
+const { PutObjectCommand } = require("@aws-sdk/client-s3");
+const s3Client = require("../config/r2-config");
+
 exports.getUploadSignature = (req, res) => {
   try {
     const timestamp = Math.round(new Date().getTime() / 1000);
@@ -22,6 +26,47 @@ exports.getUploadSignature = (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ message: "Failed to generate signature", error: error.message });
+  }
+};
+
+exports.getPresignedUrl = async (req, res) => {
+  try {
+    const { filename, mimeType } = req.query;
+    if (!filename || !mimeType) {
+      return res.status(400).json({ message: "filename and mimeType are required query parameters" });
+    }
+
+    // Clean original name: replace non-alphanumeric chars (excluding dots/dashes) with underscores
+    const cleanOriginalName = filename.replace(/[^a-zA-Z0-9.-]/g, "_");
+    const ext = cleanOriginalName.split('.').pop().toLowerCase();
+    
+    // Auto-rewrite filename extension to .jpg for images so they align with compression output
+    const isImage = ['jpg', 'jpeg', 'png'].includes(ext);
+    let finalKey = cleanOriginalName;
+    if (isImage) {
+      const baseName = cleanOriginalName.substring(0, cleanOriginalName.lastIndexOf('.')) || cleanOriginalName;
+      finalKey = `${baseName}.jpg`;
+    }
+
+    const fileKey = `IDT-MEDIA/contest-entries/${Date.now()}-${finalKey}`;
+    const contentType = isImage ? 'image/jpeg' : mimeType;
+
+    const command = new PutObjectCommand({
+      Bucket: process.env.R2_BUCKET_NAME,
+      Key: fileKey,
+      ContentType: contentType,
+    });
+
+    const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 900 }); // Valid for 15 mins
+    const publicUrl = `${process.env.R2_PUBLIC_URL}/${fileKey}`;
+
+    res.status(200).json({
+      uploadUrl,
+      publicUrl,
+    });
+  } catch (error) {
+    console.error("Failed to generate presigned URL:", error);
+    res.status(500).json({ message: "Failed to generate upload URL", error: error.message });
   }
 };
 

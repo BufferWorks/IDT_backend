@@ -10,6 +10,7 @@ const voteController = require("../controllers/voteController");
 // Static Routes (must come before /:contestID)
 router.get("/user-profile/:userId", entryController.getPublicUserProfile);
 router.get("/upload-signature", verifyFirebaseToken, entryController.getUploadSignature);
+router.get("/presigned-url", verifyFirebaseToken, entryController.getPresignedUrl);
 
 router.post(
   "/create",
@@ -17,7 +18,7 @@ router.post(
     req.folderName = "IDT-MEDIA/contests-banners";
     next();
   },
-  upload.single("bannerImage"),
+  upload.r2Upload.single("bannerImage"),
   contestController.createContest,
 );
 
@@ -46,7 +47,7 @@ router.put(
     req.folderName = "IDT-MEDIA/contests-banners";
     next();
   },
-  upload.single("bannerImage"),
+  upload.r2Upload.single("bannerImage"),
   contestController.updateContest
 );
 
