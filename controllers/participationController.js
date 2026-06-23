@@ -155,7 +155,7 @@ exports.getParticipants = async (req, res) => {
       const rawParticipantsWithEntries = await Promise.all(
       participations.map(async (p) => {
         const entryAny = await ContestEntry.findOne({ participationId: p._id })
-          .select("_id images videoUrl entryNumber verificationStatus")
+          .select("_id images videoUrl videoThumbnail entryNumber verificationStatus")
           .lean();
           
         // Self-heal status if it was clobbered by the old payment webhook bug
@@ -176,9 +176,11 @@ exports.getParticipants = async (req, res) => {
           hasEntry: !!entryAny,
           entryNumber: entryAny ? entryAny.entryNumber : null,
           entryThumbnail:
-            entryAny && entryAny.images && entryAny.images.length > 0
-              ? entryAny.images[0]
-              : null,
+            entryAny && entryAny.videoThumbnail
+              ? entryAny.videoThumbnail
+              : (entryAny && entryAny.images && entryAny.images.length > 0
+                ? entryAny.images[0]
+                : null),
           verificationStatus: entryAny ? (entryAny.verificationStatus || 'PENDING') : 'PENDING',
         };
       }),

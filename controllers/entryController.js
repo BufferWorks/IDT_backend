@@ -129,6 +129,7 @@ exports.uploadEntry = async (req, res) => {
       // Update existing entry
       if (images.length > 0) entry.images = images;
       if (videoUrl) entry.videoUrl = videoUrl;
+      if (req.body.videoThumbnail) entry.videoThumbnail = req.body.videoThumbnail;
       if (bio) entry.bio = bio;
       entry.isApproved = true; // Auto-approve updates for now
       entry.submittedAt = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
@@ -149,6 +150,7 @@ exports.uploadEntry = async (req, res) => {
         entryNumber: newEntryNumber,
         images,
         videoUrl,
+        videoThumbnail: req.body.videoThumbnail || null,
         bio,
         isApproved: true,
       });

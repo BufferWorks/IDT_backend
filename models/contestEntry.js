@@ -33,6 +33,7 @@ const contestEntrySchema = new mongoose.Schema(
       },
     },
     videoUrl: { type: String },
+    videoThumbnail: { type: String },
     bio: { type: String },
 
     isApproved: { type: Boolean, default: true }, // no approval flow for now
