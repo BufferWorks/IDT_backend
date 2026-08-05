@@ -97,10 +97,13 @@ const sendEntryUploadWhatsApp = async (mobile, entryNumber, votingUrl) => {
   // Fast2SMS dual-variable format: pipe-delimited
   const variablesValues = `${entryNumber}|${votingUrl}`;
 
+  const bannerUrl = process.env.WHATSAPP_BANNER_URL || 'https://media.idteventmanagement.online/logo_jpeg.jpeg';
+
   const params = new URLSearchParams();
   params.append('route', 'whatsapp');
   params.append('message_id', ENTRY_MESSAGE_ID);
   params.append('variables_values', variablesValues);
+  params.append('media_url', bannerUrl);
   params.append('numbers', cleanMobile);
 
   try {
