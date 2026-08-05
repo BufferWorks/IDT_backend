@@ -477,21 +477,41 @@ exports.updateVerificationStatus = async (req, res) => {
 // GET /api/contests/entries/explore
 exports.getExploreEntries = async (req, res) => {
   try {
+    const now = new Date();
+
     // Find all entries that have a videoUrl and are approved
     const rawEntries = await ContestEntry.find({ 
       videoUrl: { $exists: true, $ne: null, $ne: "" },
       isApproved: true
     })
       .populate("userId", "name profileImage")
-      .populate("contestId", "name")
+      .populate("contestId", "name votingEndAt winnersAnnounced isPublished isArchived")
       .populate({
         path: "participationId",
         match: { isPaid: true }, // Only populate if the participation is paid
         select: "isPaid"
       });
 
-    // Filter out entries where participation is unpaid (participationId will be null)
-    const entries = rawEntries.filter(e => e.participationId != null);
+    // Filter out entries:
+    // 1. Must have paid participation (participationId != null)
+    // 2. Must belong to a valid contest (contestId != null)
+    // 3. Contest must NOT be archived (isArchived != true)
+    // 4. Contest must be published (isPublished != false)
+    // 5. Contest winners must NOT be announced (winnersAnnounced != true)
+    // 6. Contest voting must be active (votingEndAt >= now)
+    const entries = rawEntries.filter(e => {
+      if (!e.participationId) return false;
+      if (!e.contestId) return false;
+
+      const c = e.contestId;
+      if (c.isArchived === true) return false;
+      if (c.isPublished === false) return false;
+      if (c.winnersAnnounced === true) return false;
+
+      if (c.votingEndAt && new Date(c.votingEndAt) < now) return false;
+
+      return true;
+    });
 
     const Vote = require("../models/Vote");
     
