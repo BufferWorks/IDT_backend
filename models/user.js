@@ -47,6 +47,10 @@ const userSchema = new mongoose.Schema({
     unique: true,
     sparse: true, // allows multiple null values — safe for existing users
   },
+  fcmToken: {
+    type: String,
+    default: '',
+  },
 }, {
   timestamps: true,
 });

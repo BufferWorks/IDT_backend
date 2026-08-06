@@ -375,46 +375,17 @@ exports.getEntryById = async (req, res) => {
             const uid = decoded.uid || decoded.user_id;
             const user = await User.findOne({ firebaseUID: uid });
             if (user) {
-              const contestObj = entry.contestId;
-              const contestID =
-                contestObj && contestObj._id ? contestObj._id : contestObj;
+              const Vote = require("../models/Vote");
 
-              if (contestID) {
-                const Vote = require("../models/Vote");
-                // Debug Log removed
+              const vote = await Vote.findOne({
+                voterId: user._id,
+                entryId: entry._id,
+              });
 
-                const vote = await Vote.findOne({
-                  voterId: user._id,
-                  contestId: contestID,
-                });
-
-
-                if (vote) {
-                  hasVotedInContest = true;
-                  if (vote.entryId.toString() === entry._id.toString()) {
-                    isVoted = true;
-                  } else {
-                    // Fetch who they voted for
-                    const votedEntry = await ContestEntry.findById(
-                      vote.entryId,
-                    ).populate("userId", "name");
-                    if (votedEntry) {
-                      votedEntryDetails = {
-                        _id: votedEntry._id.toString(),
-                        name: votedEntry.userId
-                          ? votedEntry.userId.name
-                          : "Unknown Candidate",
-                        image:
-                          votedEntry.images && votedEntry.images.length > 0
-                            ? votedEntry.images[0]
-                            : null,
-                      };
-                    }
-                  }
-                }
+              if (vote) {
+                isVoted = true;
               }
-            } else {
-              console.log("[getEntryById] User not found via firebaseUID");
+              hasVotedInContest = false; // Always false in Like System!
             }
           }
         } else {
@@ -422,7 +393,7 @@ exports.getEntryById = async (req, res) => {
         }
       }
     } catch (e) {
-      console.error("Auth check error in getEntryById", e);
+      console.error("Auth check error in getEntryById:", e);
     }
 
     const entryObj = entry.toObject();

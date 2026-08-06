@@ -23,8 +23,14 @@ const voteSchema = new mongoose.Schema(
 );
 
 /**
- * One vote per user per contest
+ * One like per user per entry
  */
-voteSchema.index({ voterId: 1, contestId: 1 }, { unique: true });
+voteSchema.index({ voterId: 1, entryId: 1 }, { unique: true });
 
-module.exports = mongoose.model("Vote", voteSchema);
+const VoteModel = mongoose.model("Vote", voteSchema);
+
+mongoose.connection.once("open", () => {
+  VoteModel.syncIndexes().catch(() => {});
+});
+
+module.exports = VoteModel;

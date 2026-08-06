@@ -29,6 +29,7 @@ exports.getPotentialWinners = async (req, res) => {
         return {
           ...entry,
           totalVotes: voteCount,
+          totalLikes: voteCount,
         };
       }),
     );

@@ -477,3 +477,27 @@ exports.ensureReferralCode = async (req, res) => {
     return res.status(500).json({ message: 'Server error', error: err.message });
   }
 };
+
+// ✅ Update FCM Token for Push Notifications
+exports.updateFcmToken = async (req, res) => {
+  try {
+    const firebaseUID = req.firebaseUID;
+    const { fcmToken } = req.body;
+
+    if (!firebaseUID) return res.status(401).json({ message: 'Unauthorized' });
+    if (!fcmToken) return res.status(400).json({ message: 'fcmToken required' });
+
+    const user = await User.findOneAndUpdate(
+      { firebaseUID },
+      { fcmToken },
+      { new: true }
+    );
+
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    return res.status(200).json({ message: 'FCM Token updated successfully', fcmToken: user.fcmToken });
+  } catch (err) {
+    console.error('updateFcmToken error:', err.message);
+    return res.status(500).json({ message: 'Server error', error: err.message });
+  }
+};
